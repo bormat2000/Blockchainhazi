@@ -16,7 +16,7 @@ describe("Geocaching", function () {
   });
 
   it("Should create a cache", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
     const cache = await geocaching.caches(0);
     expect(cache.name).to.equal("First Cache");
     expect(cache.description).to.equal("This is the first cache");
@@ -26,11 +26,15 @@ describe("Geocaching", function () {
   });
 
   it("Should log a cache find with trackables added and removed", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
     await geocaching.addTrackable("Trackable 1", 0);
     await geocaching.addTrackable("Trackable 2", 0);
 
-    await geocaching.connect(addr1).logCacheFind(0, [0], [1], "secret123");
+    const addr1Address = await addr1.getAddress();
+    const messageHash = ethers.solidityPackedKeccak256(["uint256", "address"], [0, addr1Address]);
+    const signature = await owner.signMessage(ethers.getBytes(messageHash));
+
+    await geocaching.connect(addr1).logCacheFind(0, [0], [1], signature);
     const logs = await geocaching.getCacheLogs(0);
     expect(logs.length).to.equal(1);
     expect(logs[0].finder).to.equal(addr1.address);
@@ -40,18 +44,21 @@ describe("Geocaching", function () {
     expect(logs[0].trackablesRemoved[0]).to.equal(1);
   });
 
-  it("Should not log a cache find with incorrect secret phrase", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
+  it("Should not log a cache find with incorrect signature", async function () {
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
     await geocaching.addTrackable("Trackable 1", 0);
     await geocaching.addTrackable("Trackable 2", 0);
 
+    const messageHash = ethers.solidityPackedKeccak256(["uint256", "string"], [0, "wrongsecret"]);
+    const signature = await addr1.signMessage(ethers.getBytes(messageHash));
+
     await expect(
-      geocaching.connect(addr1).logCacheFind(0, [0], [1], "wrongsecret")
-    ).to.be.revertedWith("Incorrect secret phrase");
+      geocaching.connect(addr1).logCacheFind(0, [0], [1], signature)
+    ).to.be.revertedWith("Invalid signature");
   });
 
   it("Should add a trackable to a cache", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
     await geocaching.addTrackable("Trackable 1", 0);
     const trackable = await geocaching.trackables(0);
     expect(trackable.name).to.equal("Trackable 1");
@@ -60,8 +67,8 @@ describe("Geocaching", function () {
   });
 
   it("Should move a trackable to a new cache", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
-    await geocaching.createCache("Second Cache", "This is the second cache", "N 48° 30.000 E 020° 03.000", "secret456");
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
+    await geocaching.createCache("Second Cache", "This is the second cache", "N 48° 30.000 E 020° 03.000");
     await geocaching.addTrackable("Trackable 1", 0);
     await geocaching.moveTrackable(0, 1);
     const trackable = await geocaching.trackables(0);
@@ -69,7 +76,7 @@ describe("Geocaching", function () {
   });
 
   it("Should report and resolve a cache problem", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
     await geocaching.connect(addr1).reportCacheProblem(0);
     let problem = await geocaching.cacheProblems(0);
     expect(problem).to.be.true;
@@ -79,7 +86,7 @@ describe("Geocaching", function () {
   });
 
   it("Should only allow cache owner to resolve problem", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
     await geocaching.connect(addr1).reportCacheProblem(0);
     await expect(
       geocaching.connect(addr1).resolveCacheProblem(0)
@@ -87,8 +94,8 @@ describe("Geocaching", function () {
   });
 
   it("Should only allow trackable owner to move trackable", async function () {
-    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000", "secret123");
-    await geocaching.createCache("Second Cache", "This is the second cache", "N 48° 30.000 E 020° 03.000", "secret456");
+    await geocaching.createCache("First Cache", "This is the first cache", "N 47° 30.000 E 019° 03.000");
+    await geocaching.createCache("Second Cache", "This is the second cache", "N 48° 30.000 E 020° 03.000");
     await geocaching.addTrackable("Trackable 1", 0);
     await expect(
       geocaching.connect(addr1).moveTrackable(0, 1)
